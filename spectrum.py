@@ -608,8 +608,9 @@ class BaseKer:
         if fwhm is None:
             fwhm = self.res_elem
 
-        if rot_ker is None: 
-            v_grid, rot_ker = self.get_ker(norm=norm, **kwargs)
+        if rot_ker is None:
+            result = self.get_ker(norm=norm, **kwargs)
+            v_grid, rot_ker = result[:2]
         gauss_ker = hm.gauss(v_grid, 0.0, FWHM=fwhm)
         out_ker = np.convolve(rot_ker, gauss_ker, mode='same')
         if norm:
@@ -1106,7 +1107,7 @@ class RotKerTransitCloudy(BaseKer):
         self.amp1 = amp1
         self.amp2 = amp2
         
-    def get_ker(self, n_os=None, pad=7, v_grid=None):
+    def get_ker(self, n_os=None, pad=7, v_grid=None, norm=True):
         '''
         n_os: scalar, oversampling (to sample the kernel)
         pad: scalar
