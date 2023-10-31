@@ -1984,11 +1984,11 @@ def load_single_sequences(filename, name, path='',
     path = Path(path)
 
     try:
-        data_tr = np.load(path / filename)
+        data_tr = np.load(path / filename, allow_pickle=True)
     except FileNotFoundError:
         input_filename = Path(f'{filename.name}_data_trs_{filename_end}.npz')
         input_filename = path / input_filename
-        data_tr = np.load(input_filename)
+        data_tr = np.load(input_filename, allow_pickle=True)
 
     pca = PCA(data_tr['n_components_'])
     pca.components_ = data_tr['components_']
