@@ -13,19 +13,19 @@ instrum['spirou'] = {
 
 instrum['nirps_he'] = {
 'name': 'nirps_he',
-'nord': 49,
+'nord': 75,
 'npix': 4088,
-'resol': 90000,
-'high_res_wv_lim': [0.9, 1.8] 
+'resol': 80000,
+'high_res_wv_lim': [0.95, 1.96]
 
 }
 
 instrum['nirps_hr'] = {
 'name': 'nirps_hr',
-'nord': 49,
+'nord': 75,
 'npix': 4088,
-'resol': 100000,
-'high_res_wv_lim': [0.9, 1.8] 
+'resol': 90000,
+'high_res_wv_lim': [0.95, 1.96]
 
 }
 
