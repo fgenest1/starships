@@ -20,8 +20,8 @@ instrum['nirps_he'] = {
 
 }
 
-instrum['nirps_hr'] = {
-'name': 'nirps_hr',
+instrum['nirps_ha'] = {
+'name': 'nirps_ha',
 'nord': 75,
 'npix': 4088,
 'resol': 90000,
