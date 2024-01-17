@@ -6,8 +6,12 @@ Spectral Transmission And Radiation Search for High resolutIon Planet Signal
 Eventually, there will be  an installation via pip install.
 For now, you will have to clone this repository
 ````shell
-git clone https://github.com/boucherastro/.git
+git clone https://github.com/AntoineDarveau/starships.git
 ````
+Go into the directory and change the branch to develop
+```shell
+git checkout develop
+```
 and use the file ``requirements.txt``
 to install the packages needed.
 The current versions is tested for python 3.9.
@@ -31,6 +35,8 @@ or (depending on how your environnements work)
 virtualenv --python="/path/to/python3.9" "/path/to/new/virtualenv/"
 source /path/to/new/virtualenv/bin/activate
 ```
+NOTE: If you don't know your path to python3.9, run `which python` or `which python3`
+
 For **compute canada**:
 ```shell
 module load gcc python/3.9 mpi4py
@@ -38,10 +44,10 @@ virtualenv /path/to/new/virtualenv/
 source /path/to/new/virtualenv/bin/activate
 ```
 
-#### 2. Install required packages
-Then you have to install the relevant Python packages :
+#### 2. Install STARSHIPS
+Navigate into starhips directory (`cd /path/to/starships`). Then install the package in editor mode (temporary until we upload starships on pyPI).
 
-`pip install -r /path/to/starships/requirements.txt`
+`pip install -e .`
 
 starships relies on atmospheric models from petitRADTRANS, so also install that :
 
@@ -67,7 +73,7 @@ atmosphere = Radtrans(line_species = ['CH4'], continuum_opacities=['H2-H2'])
 ```
 You may need to install other packages (we are still building this), so note what is missing when you run the code at tell me please
 
-#### 3. Keep a local version of exofile
+#### 3. Keep a local version of exofile (optional)
 (optional, but useful without internet connexion)
 
 (Required to work on **compute canada** clusters)
