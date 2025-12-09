@@ -953,7 +953,7 @@ class Correlations():
     def plot_PRF(self, tr, interp_grid=None, ccf=None, orders=None, RV=0., icorr=None, split_fig=[0], peak_center=None,
                      hlines=None, texts=None, kind='logl_corr', index=None, snr_1d=None, labels=None, clim=None, 
                      path_fig='', fig_name=None, extension='.pdf', id_pc=None, map_kind='snr', debug=False, remove_mean=False,
-                 minus_kp=False, figwidth=10):
+                 minus_kp=False, figwidth=10, figheight=8):
 
 #         if ccf is None:
 #             if kind == "shift":
@@ -1081,7 +1081,7 @@ class Correlations():
                 height.append(np.sum(tr.dt[id_range[i][0]:id_range[i][1]]).to(u.h).value)
             height.append(height[0]/2)
 
-            fig = plt.figure(constrained_layout=True, figsize=(figwidth,8))
+            fig = plt.figure(constrained_layout=True, figsize=(figwidth,figheight))
             gs = fig.add_gridspec(len(split_fig), 3, width_ratios=[3, 3, 1.3], height_ratios=height)
 
             ax_map = []
@@ -1112,16 +1112,18 @@ class Correlations():
                 if index is not None:
                     idx_zero = np.where((z[i] == 0).all(axis=-1) == True)[0]
                     print(idx_zero)
-                    if i == 0:
-                        idx_end =idx_zero[-1]+1
-                    else:
-                        if idx_zero[-1] == len(y)-1:
-                            idx_zero[-1]
+                    # adding a condition on idx_zero in case it's empty for some of the transits in the split figure
+                    if len(idx_zero)>0:
+                        if i == 0:
+                            idx_end =idx_zero[-1]+1
                         else:
-                            idx_end = idx_zero[-1]+1
-                    print(idx_zero[0],idx_end)
-                    ax_map[i].pcolormesh(x, y[i][idx_zero[0]:idx_end], z[i][idx_zero[0]:idx_end] , 
-                                     cmap='nipy_spectral_r', rasterized=True,)
+                            if idx_zero[-1] == len(y)-1:
+                                idx_end = idx_zero[-1]
+                            else:
+                                idx_end = idx_zero[-1]+1
+                        print(idx_zero[0],idx_end)
+                        ax_map[i].pcolormesh(x, y[i][idx_zero[0]:idx_end], z[i][idx_zero[0]:idx_end] , 
+                                         cmap='nipy_spectral_r', rasterized=True,)
                 try: 
                     id_out = tr.iOut[(tr.iOut>=id_range[i][0]) & (tr.iOut<id_range[i][1])]-id_range[i][0]
                     ax_map[i].plot(np.ones_like(y[i])[id_out]*RV, y[i][id_out], 'k.', alpha=0.5)

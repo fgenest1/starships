@@ -803,7 +803,8 @@ def print_static(*var):
 
 #     print("\r", end="")
 #     print(*var, end="")
-    print(*var, end='\r', flush=True)
+    # print(*var, end='\r', flush=True)
+    print('\r', *var, flush=True, end="")
 
 # ----------------------------------------------------------------
 

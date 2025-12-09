@@ -1610,7 +1610,7 @@ def gen_params_id_p(params_priors):
 #     return maxs, errors
 
 
-def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None, plot=True, **kwargs):
+def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None, plot=True, plot_maxs=True, **kwargs):
     #     print(sample_all.shape)
     ndim = sample_all.shape[-1]
 
@@ -1645,9 +1645,10 @@ def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None
             #         maxs[i] = 0
             #         errors[i][1] = 0
 
-            axes[i, i].axvline(maxs[i], color='k')
-            axes[i, i].axvline(errors[i][0], color='k', linestyle='--')
-            axes[i, i].axvline(errors[i][1], color='k', linestyle='--')
+            if plot_maxs:
+                axes[i, i].axvline(maxs[i], color='k')
+                axes[i, i].axvline(errors[i][0], color='k', linestyle='--')
+                axes[i, i].axvline(errors[i][1], color='k', linestyle='--')
 
             if i == param_no_zero:
                 float_str_moins = "{:.0f}".format(errors[i][0] - maxs[i])

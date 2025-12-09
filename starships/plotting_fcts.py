@@ -1739,10 +1739,10 @@ def plot_airmass(list_tr, markers=['o','s','d'],
     ax[0].axvspan(phase_t2, phase_t3, alpha=0.2)
     ax[0].axvspan(phase_t2, phase_t2, alpha=0.4, label='Total Transit')
 
-    ax[0].ylabel('Airmass', fontsize=16)
-    ax[0].xlabel(r'Orbital phase ($\phi$)', fontsize=16)
-    ax[0].legend(loc='upper left', fontsize=12)
-    ax[0].tight_layout()
+    ax[0].set_ylabel('Airmass', fontsize=16)
+    ax[0].set_xlabel(r'Orbital phase ($\phi$)', fontsize=16)
+    ax[0].legend(loc='best', fontsize=11.5)
+    # ax[0].tight_layout()
 
     # if path_fig is not None:
     #     plt.savefig(path_fig+'fig_airmass{}.pdf'.format(fig_name))
@@ -1759,7 +1759,7 @@ def plot_airmass(list_tr, markers=['o','s','d'],
     ax[1].set_ylabel('Mean S/N\nper order', fontsize=16)
     ax[1].set_xlabel(r'Wavelength ($\mu$m)', fontsize=16)
     # ax[0].axvspan(np.mean(tr.wv,axis=-1)[28], np.mean(tr.wv,axis=-1)[36], alpha=0.2, color='darkorange',label='H-band')
-    ax[1].legend(loc='upper left', fontsize=12) #, bbox_to_anchor=(0.9, 0.71)
+    # ax[1].legend(loc='upper left', fontsize=12) #, bbox_to_anchor=(0.9, 0.71)
 
     for i,tr in enumerate(list_tr):
         ax[2].plot(tr.phase, np.nanmean(tr.SNR[:, hband],axis=-1),'-', marker=markers[i], color=colors[i])
@@ -1772,7 +1772,9 @@ def plot_airmass(list_tr, markers=['o','s','d'],
     ax[2].axvspan(phase_t2, phase_t3, alpha=0.2)
     ax[2].axvspan(phase_t2, phase_t2, alpha=0.4, label='Total Transit')
 
-    ax[2].legend(loc='best', fontsize=12) #, bbox_to_anchor=(0.9, 0.71)
+    # ax[2].legend(loc='best', fontsize=12) #, bbox_to_anchor=(0.9, 0.71)
+    
+    plt.tight_layout()
 
     if path_fig is not None:
         plt.savefig(path_fig+'fig_SNR{}.pdf'.format(fig_name))
