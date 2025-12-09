@@ -164,11 +164,13 @@ def select_mol_list(list_mols, list_values=None, kind_res='low',
         'CO2': 'CO2_main_iso',
         'FeH': 'FeH_main_iso',
         'C2H2': 'C2H2_main_iso',
-        'CH4': 'CH4_Hargreaves_main_iso',
+        # 'CH4': 'CH4_Hargreaves_main_iso',
+        'CH4': 'CH4_Yurchenko_main_iso',
         'HCN': 'HCN_main_iso',
         'NH3': 'NH3_coles_main_iso',
         'TiO': 'TiO_all_iso',
         'SiO': 'SiO_main_iso',
+        'H2S': 'H2S_main_iso',
         'VO': 'VO',
         'OH': 'OH',  # 'OH_SCARLET',
         'Na': 'Na',
@@ -207,6 +209,7 @@ def select_mol_list(list_mols, list_values=None, kind_res='low',
         'TiO': 'TiO_all_Plez',
         'VO': 'VO_Plez',
         'OH': 'OH',
+        'H2S': 'H2S',
         'Na': 'Na_allard',
         'K': 'K_allard',
         'H-': 'H-',
@@ -392,7 +395,7 @@ def calc_MMW3(abundances):
 
 
 def gen_abundances(species_list, VMRs, pressures, temperatures, verbose=False,
-                   vmrh2he=[0.85, 0.15], dissociation=False, scale=1.0, plot=False):  # , MMW=2.33):
+                   vmrh2he=[0.85, 0.15], dissociation=False, step_profiles=[], scale=1.0, plot=False):  # , MMW=2.33):
 
     log.debug(f'In gen_abundances: species_list = {species_list}')
     log.debug(f'In gen_abundances: VMRs = {VMRs}')
@@ -404,24 +407,39 @@ def gen_abundances(species_list, VMRs, pressures, temperatures, verbose=False,
         mol = specie.split('_')[0]
         #         print(mol)
         species.append(mol)
+        
+    # to account for the possibility of step profiles and some elements of VMRs being lists,
+    # need to compute np.array(VMRs).sum() separately in a different way
+    # and put that in the calculation for H2 and He VMRs
+    VMR_sum = 0.
+    for vmr in VMRs:
+        if isinstance(vmr, list):
+            VMR_sum += np.mean([vmr[0],vmr[1]])
+        else:
+            VMR_sum += vmr
 
     if 'H2' not in species_list:
         if verbose:
             print('add H2')
-        VMRs_H2 = vmrh2he[0] * (1 - np.array(VMRs).sum())
+        # VMRs_H2 = vmrh2he[0] * (1 - np.array(VMRs).sum())
+        VMRs_H2 = vmrh2he[0] * (1 - VMR_sum)
         species.append('H2')
         species_list.append('H2')
         VMRs.append(VMRs_H2)
     #         print(species, species_list, VMRs)
+        # update VMR_sum to reflect the previous inclusion of H2
+        VMR_sum += VMRs_H2
 
     if 'He' not in species_list:
         if verbose:
             print('add He')
         if 'H2' in species_list:
-            VMRs_He = (1 - np.array(VMRs).sum())
+            # VMRs_He = (1 - np.array(VMRs).sum())
+            VMRs_He = (1 - VMR_sum)
         #             print('H2 in species', VMRs_He, np.array(VMRs).sum(), VMRs)
         else:
             VMRs_He = vmrh2he[1] * (1 - np.array(VMRs).sum())
+            VMRs_He = vmrh2he[1] * (1 - VMR_sum)
         #             print('H2 not in species', VMRs_He)
         #         VMRs_He = vmrh2he[1]*(1-np.array(VMRs).sum())
         species.append('He')
@@ -441,8 +459,13 @@ def gen_abundances(species_list, VMRs, pressures, temperatures, verbose=False,
     for specie_name, vmr in zip(species_list, VMRs):
         if verbose:
             print(specie_name, vmr)
-
-        profile[specie_name] = vmr * np.ones_like(pressures)
+        # tentative implementation of step profiles
+        if specie_name.split('_')[0] in step_profiles:
+            profile[specie_name] = np.zeros_like(pressures)
+            profile[specie_name][np.where(pressures<vmr[-1])] = vmr[0]
+            profile[specie_name][np.where(pressures>vmr[-1])] = vmr[1]
+        else:
+            profile[specie_name] = vmr * np.ones_like(pressures)
 
     if ('H-' in species_list) and ('H' not in species_list):
         if verbose:
@@ -1036,7 +1059,7 @@ def get_Fe_from_metallicity(VMR, Fe_to_H):
 def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures,
                           gravity, P0, cloud, R_pl, R_star, C_to_O=None, Fe_to_H=None,
                           kappa_factor=None, gamma_scat=None, vmrh2he=None, plot_abundance=False,
-                          kind_trans='transmission', dissociation=False, fct_star=None,
+                          kind_trans='transmission', dissociation=False, step_profiles=[], fct_star=None,
                           contribution=False, specie_2_lnlst=None, save_abundances = False, 
                           abundances = None, MMW = None, VMR = None, **kwargs):
     if vmrh2he is None:
@@ -1066,7 +1089,7 @@ def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures
         abundances, MMW, VMR = gen_abundances([*species.keys()], [*species.values()],
                                      pressures, temperatures,
                                      verbose=False, vmrh2he=vmrh2he,
-                                     dissociation=dissociation, plot=plot_abundance)
+                                     dissociation=dissociation, step_profiles=step_profiles, plot=plot_abundance)
 
     else: 
         if chemical_equilibrium:
