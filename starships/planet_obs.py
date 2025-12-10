@@ -1592,6 +1592,9 @@ class Planet():
                 parametres = ExoFile.load(query=False, use_alt_file=True).by_pl_name(name)
             except FileNotFoundError:
                 parametres = ExoFile.load(use_alt_file=True).by_pl_name(name)
+            # catch other exception in case we have a planet that is in the custom file, but not in the main exofile
+            except:
+                parametres = ExoFile.load(query=False).by_pl_name(name)
 
         #  --- Propriétés du système
         self.R_star = parametres['st_rad'].to(u.m)
@@ -2071,7 +2074,8 @@ def load_single_sequences(filename, name, path='',
     except FileNotFoundError:
         input_filename = Path(f'{filename.name}_data_trs_{filename_end}.npz')
         input_filename = path / input_filename
-        data_tr = np.load(input_filename)
+        # data_tr = np.load(input_filename)
+        data_tr = np.load(input_filename,allow_pickle=True)
 
     pca = PCA(data_tr['n_components_'])
     pca.components_ = data_tr['components_']

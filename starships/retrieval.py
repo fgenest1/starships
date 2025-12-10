@@ -1678,6 +1678,9 @@ global n_cpu
 global n_walkers
 global n_walkers_per_cpu
 global opacity_sampling
+# new, test for using lbl in LR model also
+global LR_opacity_mode
+global LR_opacity_sampling
 global orders
 global pl_params
 global instrum
@@ -1700,6 +1703,10 @@ global star_spectrum
 # new global variables to be able to remove species at either resolution
 global remove_mol_high
 global remove_mol_low
+# new global variable to manually mask exposures (intended for masking berv crossings)
+global mask_exposures
+# new global variable to give which molecules should have step_profiles
+global step_profiles
 
 
 def convert_to_quantity(quantity_dict):
@@ -1830,10 +1837,15 @@ def unpack_input_parameters(input_parameters, **kwargs):
     empty_dict_if_none = ['spectrophotometric_data', 'photometric_data',
                           'pl_params', 'linelist_names', 'fixed_params',
                           'reg_fixed_params', 'reg_params', 'special_init',
-                          'remove_mol_high', 'remove_mol_low']
+                          'remove_mol_high', 'remove_mol_low', 'mask_exposures',
+                          'LR_opacity_mode', 'LR_opacity_sampling', 'step_profiles']
     for key in empty_dict_if_none:
-        if input_params[key] is None:
-            log.info(f'{key} is None. Setting it to an empty dictionary instead.')
+        try:
+            if input_params[key] is None:
+                log.info(f'{key} is None. Setting it to an empty dictionary instead.')
+                input_params[key] = {}
+        except KeyError:
+            log.info(f'{key} is not set in the yaml. Setting it to an empty dictionary.')
             input_params[key] = {}
 
     # Check if some numbers are in string format and raise a warning if so.
@@ -2120,7 +2132,11 @@ def setup_retrieval(input_parameters, **kwargs):
 
     # --- Resolution of the planet model ---
     global prt_res
-    prt_res = {'high': int(1e6 / opacity_sampling), 'low': 1000}
+    # prt_res = {'high': int(1e6 / opacity_sampling), 'low': 1000}
+    if LR_opacity_mode == 'lbl':
+        prt_res = {'high': int(1e6 / opacity_sampling), 'low': int(1e6 / LR_opacity_sampling)}
+    else:
+        prt_res = {'high': int(1e6 / opacity_sampling), 'low': 1000}
 
     # --- Additional variables ---
     global inj_alpha, nolog, do_tr
@@ -2515,6 +2531,10 @@ def init_model_retrieval(mol_species=None, kind_res='high', lbl_opacity_sampling
     :param kwargs: other kwargs passed to `starships.petitradtrans_utils.select_mol_list()`
     :return: atmos, species, fct_star, pressure array
     """
+    
+# modifying to try using lbl instead of c-k at low R as well
+# need to pass the proper opacity sampling for LR
+# also need to make sure to pull from the HR linelists
 
     if mol_species is None:
         mol_species = line_opacities
@@ -2528,7 +2548,10 @@ def init_model_retrieval(mol_species=None, kind_res='high', lbl_opacity_sampling
     if pressures is None:
         pressures = fixed_params['pressures']
 
-    species = prt.select_mol_list(mol_species, kind_res=kind_res, **kwargs)
+    if LR_opacity_mode == 'lbl':
+        species = prt.select_mol_list(mol_species, kind_res='high', **kwargs)
+    else:
+        species = prt.select_mol_list(mol_species, kind_res=kind_res, **kwargs)
     species_2_lnlst = {mol: lnlst for mol, lnlst in zip(mol_species, species)}
 
     if kind_res == 'high':
@@ -2537,7 +2560,11 @@ def init_model_retrieval(mol_species=None, kind_res='high', lbl_opacity_sampling
             wl_range = wv_range_high[0]
 
     elif kind_res == 'low':
-        mode = 'c-k'
+        if LR_opacity_mode == 'lbl':
+            mode = LR_opacity_mode
+            lbl_opacity_sampling = LR_opacity_sampling
+        else:
+            mode = 'c-k'
         if wl_range is None:
             wl_range = wv_range_low[0]
     else:
@@ -2669,7 +2696,7 @@ def unpack_theta(theta):
                                         (theta_region['R_pl'] * const.R_jup) ** 2).cgs.value
             
         # Some values need to be set to None if not included in the fit or not in fixed_params.
-        for key in ['wind', 'p_cloud', 'gamma_scat', 'scat_factor', 'C/O', 'Fe/H', 'cloud_fraction']:
+        for key in ['wind', 'p_cloud', 'gamma_scat', 'scat_factor', 'C/O', 'Fe/H', 'cloud_fraction', 'LR_offset']:
             if key not in combined_dict:
                 combined_dict[key] = None
             
@@ -2710,8 +2737,31 @@ def prepare_abundances(theta_dict, mode=None, ref_linelists=None):
             ref_linelists = [linelist_names[mode][mol] for mol in line_opacities]
 
     # --- Prepare the abundances (with the correct linelist name for species)
-    species = {lnlst: theta_dict[mol] for lnlst, mol
-               in zip(ref_linelists, line_opacities)}
+    # Attempt to have two different abundances in each resolution mode for one molecule
+    # For now, doing this by having mol_HR and mol_LR in the priors, and only mol in line_opacities
+    # There will be a KeyError trying to get theta_dict[mol] here, catch it and use the mode ('high' or 'low') to get the
+    # right key for theta_dict
+    species=dict()
+    for lnlst, mol in zip(ref_linelists, line_opacities):
+        try:
+            if mol in step_profiles:
+                species[lnlst]=[]
+                species[lnlst].append(theta_dict[mol+'_1'])
+                species[lnlst].append(theta_dict[mol+'_2'])
+                species[lnlst].append(theta_dict[mol+'_ptrans'])
+            else:
+                species[lnlst] = theta_dict[mol]
+        except KeyError:
+            if mode=='high' and mol+'_HR' in theta_dict.keys():
+                species[lnlst] = theta_dict[mol+'_HR']
+            elif mode=='low' and mol+'_LR' in theta_dict.keys():
+                species[lnlst] = theta_dict[mol+'_LR']
+    
+    # normal version for line_opacities:
+    # species = {lnlst: theta_dict[mol] for lnlst, mol
+    #             in zip(ref_linelists, line_opacities)}
+        
+        
     
     # --- Adding continuum opacities
     for mol in continuum_opacities:
@@ -2763,6 +2813,7 @@ def prepare_model_high_or_low(theta_dict, mode, atmo_obj=None, fct_star=None,
                     specie_2_lnlst=linelist_names[mode],
                     kind_trans=kind_trans,
                     dissociation=dissociation,
+                    step_profiles=step_profiles,
                     fct_star=fct_star)
     wv_all, model_all = list(), list()
     for atmo_obj in atmo_obj_list:
@@ -2774,7 +2825,10 @@ def prepare_model_high_or_low(theta_dict, mode, atmo_obj=None, fct_star=None,
             wv_out, model_out_cloudy = prt.retrieval_model_plain(atmo_obj, species, planet, *args, **kwargs)
             theta_dict['p_cloud_clear'] = None
             args_clear = [theta_dict[key] for key in ['pressures', 'temperatures', 'gravity', 'P0', 'p_cloud_clear', 'R_pl', 'R_star']]
-            wv_out, model_out_clear = prt.retrieval_model_plain(atmo_obj, species, planet, *args_clear, **kwargs)
+            kwargs_clear = dict(kwargs)
+            kwargs_clear['gamma_scat'] = None
+            kwargs_clear['kappa_factor'] = None
+            wv_out, model_out_clear = prt.retrieval_model_plain(atmo_obj, species, planet, *args_clear, **kwargs_clear)
             model_out = (cloud_f * model_out_cloudy) + (clear_f * model_out_clear)
 
         if mode == 'high':
@@ -2794,6 +2848,10 @@ def prepare_model_high_or_low(theta_dict, mode, atmo_obj=None, fct_star=None,
                 # Downgrade the model
                 wv_out, model_out = prt.prepare_model(wv_out, model_out, prt_res[mode], Raf=Raf,
                                                     rot_ker=rot_ker, **rot_kwargs)
+                
+        if mode == 'low' and not theta_dict['LR_offset'] == None:
+            # DC offset for low R (e.g. JWST data)
+            model_out += theta_dict['LR_offset']
 
         wv_all.append(wv_out)
         model_all.append(model_out)
@@ -2948,9 +3006,16 @@ def lnprob(theta, ):
 
         logl_all_visits = np.concatenate(logl_i, axis=0)
         log.debug(f'Shape of individual logl for all exposures (all visits combined): {logl_all_visits.shape}')
-        total += corr.sum_logl(logl_all_visits, data_info['trall_icorr'], orders,
-                               data_info['trall_N'], axis=0, del_idx=data_info['bad_indexs'], nolog=True,
-                               alpha=data_info['trall_alpha_frac'])
+        # overriding the bad_indexs with mask_exposures if a list of exposures was specified in the yaml
+        # as of now bad_indexs is not implemented anyway
+        if len(globals()['mask_exposures']) == 0:
+            total += corr.sum_logl(logl_all_visits, data_info['trall_icorr'], orders,
+                                   data_info['trall_N'], axis=0, del_idx=data_info['bad_indexs'], nolog=True,
+                                   alpha=data_info['trall_alpha_frac'])
+        else:
+            total += corr.sum_logl(logl_all_visits, data_info['trall_icorr'], orders,
+                                   data_info['trall_N'], axis=0, del_idx=globals()['mask_exposures'], nolog=True,
+                                   alpha=data_info['trall_alpha_frac'])
 
     ###################
     # --- LOW RES --- #
@@ -2991,6 +3056,8 @@ def lnprob(theta, ):
                 
                 # Get data measured by the instrument
                 data, uncert = infos['data'], infos['err']
+                # Add instrumental offset (0 if nothing specified in the yaml's priors or fixed parameters)
+                data = data + theta_dict.get(f'{instru_name}_offset', 0)
                 
                 # In white-light mode, use the mean of the data
                 if white_light:
