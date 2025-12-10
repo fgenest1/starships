@@ -1571,10 +1571,10 @@
 # Do imports when needed
 
 import sys
-sys.path.append('/home/fgenest/')
-sys.path.append('/home/fgenest/starships/')
 
 import os
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
 from pathlib import Path
 import yaml
 import logging
@@ -3004,7 +3004,6 @@ def lnprob(theta, ):
 
             logl_i.append(logl_tr)
 
-        # logl_all_visits = np.concatenate(np.array(logl_i), axis=0)
         logl_all_visits = np.concatenate(logl_i, axis=0)
         log.debug(f'Shape of individual logl for all exposures (all visits combined): {logl_all_visits.shape}')
         # overriding the bad_indexs with mask_exposures if a list of exposures was specified in the yaml
