@@ -1,10 +1,20 @@
 import numpy as np
+prt_version=None
 try:
     from petitRADTRANS import Radtrans
     from petitRADTRANS import nat_cst as nc
     from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
+    prt_version='2'
 except ModuleNotFoundError:
     print('petitRADTRANS is not installed on this system')
+# if we're working with pRT3
+except ImportError:
+    from petitRADTRANS.radtrans import Radtrans
+    from petitRADTRANS import physical_constants as nc
+    from petitRADTRANS.chemistry.pre_calculated_chemistry import PreCalculatedEquilibriumChemistryTable
+    from petitRADTRANS.chemistry.prt_molmass import get_species_molar_mass
+    chem_table = PreCalculatedEquilibriumChemistryTable()
+    prt_version='3'
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -39,17 +49,22 @@ def calc_single_mass(mol):
     if '_' in mol:
         mol = mol.split('_')[0]
 
-    if mol == 'e-':
-        single_mass = 0.00054857990888
+    # If we're working with pRT3, the formatting of linelist names will make it difficult to use molmass.Formula directly
+    # In the meantime, use pRT3's built-in function to compute molmass
+    if prt_version=='3':
+        single_mass = get_species_molar_mass(mol)
     else:
-        if '-' in mol:
-            #             print('-')
-            single_mass = Formula(mol[:-1]).mass
-        elif '+' in mol:
-            #             print('+')
-            single_mass = Formula(mol[:-1]).mass
+        if mol == 'e-':
+            single_mass = 0.00054857990888
         else:
-            single_mass = Formula(mol).mass  # * const.u.cgs  # cst.atomic_mass
+            if '-' in mol:
+                #             print('-')
+                single_mass = Formula(mol[:-1]).mass
+            elif '+' in mol:
+                #             print('+')
+                single_mass = Formula(mol[:-1]).mass
+            else:
+                single_mass = Formula(mol).mass  # * const.u.cgs  # cst.atomic_mass
 
     return single_mass
 
@@ -94,20 +109,32 @@ def mass_frac_2_vmr_specie(species_name, m_frac, mmw):
 #         print(file_name)
 
 def gen_atm(species_list, pressures, mode='lbl', wl_range=[0.95, 2.55],
-            rayleigh_species=[], continuum_opacities=[], **kwargs):
-    atmosphere = Radtrans(line_species=species_list,
-                          rayleigh_species=['H2', 'He'] + rayleigh_species,
-                          continuum_opacities=['H2-H2', 'H2-He'] + continuum_opacities,
-                          wlen_bords_micron=wl_range,
-                          mode=mode,
-                          **kwargs)
+            rayleigh_species=[], continuum_opacities=[], lbl_opacity_sampling=1, **kwargs):
+    # if we're working in prt3, the parameters for the Radtrans object creation changed a bit
+    # TODO? implement and add cloud_species
+    if prt_version=='3':
+        atmosphere = Radtrans(pressures=pressures, wavelength_boundaries=wl_range, 
+                              line_species=species_list, gas_continuum_contributors=['H2-H2', 'H2-He'] + continuum_opacities,
+                              rayleigh_species=['H2', 'He'] + rayleigh_species,
+                              line_opacity_mode=mode, line_by_line_opacity_sampling=lbl_opacity_sampling,
+                              **kwargs)
+    # prt2
+    else:
+        atmosphere = Radtrans(line_species=species_list,
+                              rayleigh_species=['H2', 'He'] + rayleigh_species,
+                              continuum_opacities=['H2-H2', 'H2-He'] + continuum_opacities,
+                              wlen_bords_micron=wl_range,
+                              mode=mode, lbl_opacity_sampling=lbl_opacity_sampling,
+                              **kwargs)
 
-    atmosphere.setup_opa_structure(pressures)
+    # this step is integrated in the Radtrans() call in prt3
+    if prt_version!='3':
+        atmosphere.setup_opa_structure(pressures)
 
     return atmosphere
 
 
-def gen_atm_all(species_list, pressures=None, limP=[-12, 4], n_pts=150, indiv=False, **kwargs):
+def gen_atm_all(species_list, pressures=None, limP=[-12, 4], n_pts=150, indiv=False, lbl_opacity_sampling=1, **kwargs):
     log.info(species_list)
     if pressures is None:
         pressures = np.logspace(*limP, n_pts)
@@ -117,7 +144,7 @@ def gen_atm_all(species_list, pressures=None, limP=[-12, 4], n_pts=150, indiv=Fa
     if 'H2' in species_list:
         species_list.remove('H2')
 
-    atmos_full = gen_atm(species_list, pressures, **kwargs)
+    atmos_full = gen_atm(species_list, pressures, lbl_opacity_sampling=lbl_opacity_sampling, **kwargs)
 
     log.info('Generating atmosphere with pressures from {} to {}'.format(pressures.max(), pressures.min()))
     if indiv is True:
@@ -125,7 +152,7 @@ def gen_atm_all(species_list, pressures=None, limP=[-12, 4], n_pts=150, indiv=Fa
         for specie in species_list:
             mol = specie.split('_')[0]
             log.info('Generating pure {} atmosphere'.format(mol))
-            atm_i = gen_atm([specie], pressures, **kwargs)
+            atm_i = gen_atm([specie], pressures, lbl_opacity_sampling=lbl_opacity_sampling, **kwargs)
             atmos_i_list.append(atm_i)
 
         return atmos_full, pressures, atmos_i_list
@@ -158,95 +185,188 @@ def select_mol_list(list_mols, list_values=None, kind_res='low',
     species_list = OrderedDict({})
 
     species_linelists = dict()
-    species_linelists['high'] = OrderedDict({
-        'H2O': 'H2O_pokazatel_main_iso',
-        'CO': 'CO_all_iso',
-        'CO2': 'CO2_main_iso',
-        'FeH': 'FeH_main_iso',
-        'C2H2': 'C2H2_main_iso',
-        # 'CH4': 'CH4_Hargreaves_main_iso',
-        'CH4': 'CH4_Yurchenko_main_iso',
-        'HCN': 'HCN_main_iso',
-        'NH3': 'NH3_coles_main_iso',
-        'TiO': 'TiO_all_iso',
-        'SiO': 'SiO_main_iso',
-        'H2S': 'H2S_main_iso',
-        'VO': 'VO',
-        'OH': 'OH',  # 'OH_SCARLET',
-        'Na': 'Na',
-        'K': 'K',
-        'H-': 'H-',
-        'H': 'H',
-        'e-': 'e-',
-        'Al': 'Al',
-        'B': 'B',
-        'Be': 'Be',
-        'Ca': 'Ca',
-        'CaII': 'Ca+',
-        'Cr': 'Cr',
-        'Fe': 'Fe',
-        'FeII': 'Fe+',
-        'Li': 'Li',
-        'Mg': 'Mg',
-        'MgII': 'Mg+',
-        'N': 'N',
-        'Si': 'Si',
-        'Ti': 'Ti',
-        'V': 'V',
-        'VII': 'V+',
-        'Y': 'Y',      
-    })
-
-    species_linelists['low'] = OrderedDict({
-        'H2O': 'H2O_HITEMP',
-        'CO': 'CO_all_iso_HITEMP',
-        'CO2': 'CO2',
-        'FeH': 'FeH',
-        'C2H2': 'C2H2',
-        'CH4': 'CH4',
-        'HCN': 'HCN',
-        'NH3': 'NH3',
-        'TiO': 'TiO_all_Plez',
-        'VO': 'VO_Plez',
-        'OH': 'OH',
-        'H2S': 'H2S',
-        'Na': 'Na_allard',
-        'K': 'K_allard',
-        'H-': 'H-',
-        'H': 'H',
-        'e-': 'e-',
-        'Al': 'Al',
-        'AlII': 'Al+',
-        'Ca': 'Ca',
-        'CaII': 'Ca+',
-        'Cr': 'Cr',
-        'Fe': 'Fe',
-        'FeII': 'Fe+',
-        'Li': 'Li',
-        'Mg': 'Mg',
-        'MgII': 'Mg+',
-        'N': 'N',
-        'Si': 'Si',
-        'Ti': 'Ti',
-        'V': 'V',
-        'VII': 'V+',
-        'Y': 'Y',
-    })
-        # 'Al+': 'Al+',
-        # 'Ca': 'Ca',
-        # 'Ca+': 'Ca+',
-        # 'Fe': 'Fe',
-        # 'Fe+': 'Fe+',
-        # 'Li': 'Li',
-        # 'Mg': 'Mg',
-        # 'Mg+': 'Mg+',
-        # 'O': 'O',
-        # 'Si': 'Si',
-        # 'Si+': 'Si+',
-        # 'Ti': 'Ti',
-        # 'Ti+': 'Ti+',
-        # 'V': 'V',
-        # 'V+': 'V+',
+    if prt_version=='2':
+        species_linelists['high'] = OrderedDict({
+            'H2O': 'H2O_pokazatel_main_iso',
+            'CO': 'CO_all_iso',
+            'CO2': 'CO2_main_iso',
+            'FeH': 'FeH_main_iso',
+            'C2H2': 'C2H2_main_iso',
+            # 'CH4': 'CH4_Hargreaves_main_iso',
+            'CH4': 'CH4_Yurchenko_main_iso',
+            'HCN': 'HCN_main_iso',
+            'NH3': 'NH3_coles_main_iso',
+            'TiO': 'TiO_all_iso',
+            'SiO': 'SiO_main_iso',
+            'H2S': 'H2S_main_iso',
+            'VO': 'VO',
+            'OH': 'OH',  # 'OH_SCARLET',
+            'Na': 'Na',
+            'K': 'K',
+            'H-': 'H-',
+            'H': 'H',
+            'e-': 'e-',
+            'Al': 'Al',
+            'B': 'B',
+            'Be': 'Be',
+            'Ca': 'Ca',
+            'CaII': 'Ca+',
+            'Cr': 'Cr',
+            'Fe': 'Fe',
+            'FeII': 'Fe+',
+            'Li': 'Li',
+            'Mg': 'Mg',
+            'MgII': 'Mg+',
+            'N': 'N',
+            'Si': 'Si',
+            'Ti': 'Ti',
+            'V': 'V',
+            'VII': 'V+',
+            'Y': 'Y',      
+        })
+    
+        species_linelists['low'] = OrderedDict({
+            'H2O': 'H2O_HITEMP',
+            'CO': 'CO_all_iso_HITEMP',
+            'CO2': 'CO2',
+            'FeH': 'FeH',
+            'C2H2': 'C2H2',
+            'CH4': 'CH4',
+            'HCN': 'HCN',
+            'NH3': 'NH3',
+            'TiO': 'TiO_all_Plez',
+            'SiO': 'SiO',
+            'VO': 'VO_Plez',
+            'OH': 'OH',
+            'H2S': 'H2S',
+            'Na': 'Na_allard',
+            'K': 'K_allard',
+            'H-': 'H-',
+            'H': 'H',
+            'e-': 'e-',
+            'Al': 'Al',
+            'AlII': 'Al+',
+            'Ca': 'Ca',
+            'CaII': 'Ca+',
+            'Cr': 'Cr',
+            'Fe': 'Fe',
+            'FeII': 'Fe+',
+            'Li': 'Li',
+            'Mg': 'Mg',
+            'MgII': 'Mg+',
+            'N': 'N',
+            'Si': 'Si',
+            'Ti': 'Ti',
+            'V': 'V',
+            'VII': 'V+',
+            'Y': 'Y',
+        })
+            # 'Al+': 'Al+',
+            # 'Ca': 'Ca',
+            # 'Ca+': 'Ca+',
+            # 'Fe': 'Fe',
+            # 'Fe+': 'Fe+',
+            # 'Li': 'Li',
+            # 'Mg': 'Mg',
+            # 'Mg+': 'Mg+',
+            # 'O': 'O',
+            # 'Si': 'Si',
+            # 'Si+': 'Si+',
+            # 'Ti': 'Ti',
+            # 'Ti+': 'Ti+',
+            # 'V': 'V',
+            # 'V+': 'V+',
+    else:
+        species_linelists['high'] = OrderedDict({
+            'H2O': '1H2-16O__POKAZATEL',
+            'CO': 'C-O-NatAbund__HITEMP',
+            'CO2': '12C-16O2__HITEMP',
+            'FeH': '56Fe-1H__MoLLIST',
+            'C2H2': '12C2-1H2__HITRAN',
+            # 'CH4': 'CH4_Hargreaves_main_iso',
+            'CH4': '12C-1H4__MM',
+            'HCN': '1H-12C-14N__Harris',
+            'NH3': '14N-1H3__CoYuTe',
+            'TiO': 'Ti-O-NatAbund__Plez',
+            'SiO': '28Si-16O__EBJT',
+            'H2S': '1H2-32S__HITRAN',
+            'VO': '51V-16O__Plez',
+            'OH': '16O-1H__HITEMP',  # 'OH_SCARLET',
+            'Na': '23Na__LorCut',
+            'K': '39K__Allard',
+            'H-': 'H-',
+            'H': 'H',
+            'e-': 'e-',
+            'Al': '27Al__Kurucz',
+            # 'B': 'B',
+            # 'Be': 'Be',
+            'Ca': '40Ca__Kurucz',
+            'CaII': '40Ca_p__Kurucz',
+            'Cr': '52Cr__Kurucz',
+            'Fe': '56Fe__Kurucz',
+            'FeII': '56Fe_p__Kurucz',
+            'Li': 'Li',
+            'Mg': '24Mg__Kurucz',
+            'MgII': '24Mg_p__Kurucz',
+            'N': 'N',
+            'Si': '28Si__Kurucz',
+            'Ti': '48Ti__Kurucz',
+            'V': 'V',
+            'VII': 'V+',
+            'Y': 'Y',      
+        })
+    
+        species_linelists['low'] = OrderedDict({
+            'H2O': '1H2-16O__POKAZATEL',
+            'CO': 'C-O-NatAbund__HITEMP',
+            'CO2': '12C-16O2__UCL-4000',
+            'FeH': '56Fe-1H__MoLLIST',
+            'C2H2': '12C2-1H2__aCeTY',
+            'CH4': '12C-1H4__YT34to10',
+            'HCN': '1H-12C-14N__Harris',
+            'NH3': '14N-1H3__CoYuTe',
+            'TiO': 'Ti-O-NatAbund__Plez',
+            'SiO': '28Si-16O__EBJT',
+            'VO': '51V-16O__Plez',
+            'OH': '16O-1H__MoLLIST',
+            'H2S': '1H2-32S__AYT2',
+            'Na': '23Na__Allard',
+            'K': '39K__Allard',
+            'H-': 'H-',
+            'H': 'H',
+            'e-': 'e-',
+            'Al': '27Al__Kurucz',
+            'AlII': '27Al_p__Kurucz',
+            'Ca': '40Ca__Kurucz',
+            'CaII': '40Ca_p__Kurucz',
+            'Cr': 'Cr',
+            'Fe': '56Fe__Kurucz',
+            'FeII': '56Fe_p__Kurucz',
+            'Li': '7Li__Kurucz',
+            'Mg': '24Mg__Kurucz',
+            'MgII': '24Mg_p__Kurucz',
+            'N': 'N',
+            'Si': '28Si__Kurucz',
+            'Ti': '48Ti__Kurucz',
+            'V': '51V__Kurucz',
+            'VII': '51V_p__Kurucz',
+            'Y': 'Y',
+        })
+            # 'Al+': 'Al+',
+            # 'Ca': 'Ca',
+            # 'Ca+': 'Ca+',
+            # 'Fe': 'Fe',
+            # 'Fe+': 'Fe+',
+            # 'Li': 'Li',
+            # 'Mg': 'Mg',
+            # 'Mg+': 'Mg+',
+            # 'O': 'O',
+            # 'Si': 'Si',
+            # 'Si+': 'Si+',
+            # 'Ti': 'Ti',
+            # 'Ti+': 'Ti+',
+            # 'V': 'V',
+            # 'V+': 'V+',
 
     # If someone wants to change the default line_list:
     if add_line_list is not None:
@@ -1061,7 +1181,8 @@ def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures
                           kappa_factor=None, gamma_scat=None, vmrh2he=None, plot_abundance=False,
                           kind_trans='transmission', dissociation=False, step_profiles=[], fct_star=None,
                           contribution=False, specie_2_lnlst=None, save_abundances = False, 
-                          abundances = None, MMW = None, VMR = None, **kwargs):
+                          abundances = None, MMW = None, VMR = None, cloud_fraction=1.0, output_dict=False, **kwargs):
+    # output_dict is for prt3, to output the dict containing potential extra things like the contribution function, etc.
     if vmrh2he is None:
         vmrh2he = [0.85, 0.15]
     if kappa_factor is not None:
@@ -1101,7 +1222,11 @@ def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures
         C_to_O = C_to_O * np.ones_like(temperatures)
         Fe_to_H = Fe_to_H * np.ones_like(temperatures)
         # Get abundances (=mass fraction) from PRT poorman equilibrium chemistry
-        mass_frac_eq = interpol_abundances(C_to_O, Fe_to_H, temperatures, pressures)
+        # Works a bit differently in pRT3 for the function call
+        if prt_version=='3':
+            mass_frac_eq = chem_table.interpolate_mass_fractions(C_to_O, Fe_to_H, temperatures, pressures)
+        else:
+            mass_frac_eq = interpol_abundances(C_to_O, Fe_to_H, temperatures, pressures)
         
         # Update abundances with the new species
         for mol in mass_frac_eq:
@@ -1124,20 +1249,43 @@ def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures
             abundances['Fe'] = abundances['Fe'] * calc_single_mass('Fe') / MMW
 
     if kind_trans == 'transmission':
-        atmos_object.calc_transm(temperatures, abundances, gravity, MMW,
-                                 R_pl=R_pl, P0_bar=P0, Pcloud=cloud,
-                                 gamma_scat=gamma_scat, kappa_zero=kappa_zero,
-                                 contribution=contribution,
-                                 **kwargs)
-        out = atmos_object.transm_rad ** 2 / R_star ** 2
+        if prt_version=='3':
+            freq, transit_radii, out_dict = atmos_object.calculate_transit_radii(temperatures, abundances, MMW, gravity, 
+                                                                                 P0, R_pl, opaque_cloud_top_pressure=cloud, 
+                                                                                 power_law_opacity_coefficient=gamma_scat, 
+                                                                                 power_law_opacity_350nm=kappa_zero,
+                                                                                 cloud_fraction=cloud_fraction,
+                                                                                 return_contribution=contribution, 
+                                                                                 frequencies_to_wavelengths=False, **kwargs)
+            out = transit_radii ** 2 / R_star ** 2
+            wave = nc.c / freq / 1e-4
+        else:
+            atmos_object.calc_transm(temperatures, abundances, gravity, MMW,
+                                     R_pl=R_pl, P0_bar=P0, Pcloud=cloud,
+                                     gamma_scat=gamma_scat, kappa_zero=kappa_zero,
+                                     contribution=contribution,
+                                     **kwargs)
+            out = atmos_object.transm_rad ** 2 / R_star ** 2
+            wave = nc.c / atmos_object.freq / 1e-4
     elif kind_trans == "emission":
         #         bb_mod = bb(planet.Teff)
-        atmos_object.calc_flux(temperatures, abundances, gravity, MMW,
-                               Pcloud=cloud,
-                               gamma_scat=gamma_scat, kappa_zero=kappa_zero,
-                               contribution=contribution,
-                               **kwargs)
-        wave = nc.c / atmos_object.freq / 1e-4
+        if prt_version=='3':
+            freq, flux, out_dict = atmos_object.calculate_flux(temperatures, abundances, MMW, gravity,
+                                                               opaque_cloud_top_pressure=cloud, 
+                                                               power_law_opacity_coefficient=gamma_scat, 
+                                                               power_law_opacity_350nm=kappa_zero,
+                                                               cloud_fraction=cloud_fraction,
+                                                               return_contribution=contribution, 
+                                                               frequencies_to_wavelengths=False,
+                                                               **kwargs)
+            wave = nc.c / freq / 1e-4
+        else:
+            atmos_object.calc_flux(temperatures, abundances, gravity, MMW,
+                                   Pcloud=cloud,
+                                   gamma_scat=gamma_scat, kappa_zero=kappa_zero,
+                                   contribution=contribution,
+                                   **kwargs)
+            wave = nc.c / atmos_object.freq / 1e-4
         if fct_star is None or fct_star == 'blackbody':
             # --- if no star spectrum function has been provided, it takes a black body model
             bb_mod = BB(planet.Teff)
@@ -1152,9 +1300,16 @@ def retrieval_model_plain(atmos_object, species, planet, pressures, temperatures
                (R_pl ** 2 / R_star ** 2) / star_spectrum).decompose()
         
     if save_abundances:
-        return nc.c / atmos_object.freq / 1e-4, out, abundances, MMW, VMR
+        if output_dict:
+            return wave, out, abundances, MMW, VMR, out_dict
+        else:
+            return wave, out, abundances, MMW, VMR
     
-    else: return nc.c / atmos_object.freq / 1e-4, out  # .decompose()#, MMW
+    else:
+        if output_dict:
+            return wave, out, out_dict
+        else:
+            return wave, out  # .decompose()#, MMW
 
 # def retrieval_model_plain_retrieval_version(atmos_object, species, planet, pressures, temperatures,
 #                           gravity, P0, cloud, \

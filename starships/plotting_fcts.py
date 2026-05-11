@@ -26,6 +26,9 @@ rng = np.random.default_rng()
 retrieval_plot_labels = { 'H2O': r"$\log_{10}$ H$_2$O",
                           'CO': r"$\log_{10}$ CO",
                           'CO2': r"$\log_{10}$ CO$_2$",
+                          'CH4': r"$\log_{10}$ CH$_4$",
+                          'NH3': r"$\log_{10}$ NH$_3$",
+                          'H2S': r"$\log_{10}$ H$_2$S",
                           'FeH': r"$\log_{10}$ FeH",
                           'TiO': r"$\log_{10}$ TiO",
                           'VO': r"$\log_{10}$ VO",
@@ -886,7 +889,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     cbar00 = fig.colorbar(im0,ax=ax0, cax=cax)
 #     ax0.set_title('B) Uncorrected Flux (Earth Rest Frame)')
-    ax0.text(tr.wv[iord][40], tr.phase[-6], 'B) Uncorrected Flux (Earth Rest Frame)',
+    ax0.text(tr.wv[iord][40], tr.phase[-3], 'B) Uncorrected Flux (Earth Rest Frame)',
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
 #     cbar00.set_label('Flux', fontsize=14)
     
@@ -897,7 +900,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     cbar01 = fig.colorbar(im01,ax=ax01, cax=cax)
 #     ax01.set_title('C) Telluric-Corrected Flux')
-    ax01.text(tr.wv[iord][40], tr.phase[-6], 'C) Telluric-Corrected Flux',
+    ax01.text(tr.wv[iord][40], tr.phase[-3], 'C) Telluric-Corrected Flux',
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
     cbar01.set_label('Flux',y=1.2, fontsize=14)
 
@@ -910,7 +913,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     cbar0 = fig.colorbar(im1,ax=ax1, cax=cax)
 #     ax1.set_title('D) Masked and Normalized Flux (Shifted to Star Rest Frame)')
-    ax1.text(tr.wv[iord][40], tr.phase[-6], 'D) Normalized Flux (Shifted to Pseudo SRF)',
+    ax1.text(tr.wv[iord][40], tr.phase[-3], 'D) Normalized Flux (Shifted to Pseudo SRF)',
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
 
     im2 = ax2.pcolormesh(tr.wv[iord], tr.phase, tr.fl_norm_mo[:,iord], cmap=cmap, rasterized=True)#, vmin=0.85, vmax=1.08)
@@ -922,7 +925,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     fig.colorbar(im2,ax=ax2, cax=cax)
 #     ax2.set_title('E) Normalized to the Continuum Flux')
-    ax2.text(tr.wv[iord][40], tr.phase[-6],'E) Normalized to the Continuum Flux',
+    ax2.text(tr.wv[iord][40], tr.phase[-3],'E) Normalized to the Continuum Flux',
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
 
     im3 = ax3.pcolormesh(tr.wv[iord], tr.phase, tr.spec_trans[:,iord], cmap=cmap, rasterized=True, vmin=0.955, vmax=1.035)
@@ -932,7 +935,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     fig.colorbar(im3,ax=ax3, cax=cax)
 #     ax3.set_title('F) Transmission Spectrum')
-    ax3.text(tr.wv[iord][40], tr.phase[-6], 'F) Transmission Spectrum',
+    ax3.text(tr.wv[iord][40], tr.phase[-3], 'F) Transmission Spectrum',
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
 
     im4 = ax4.pcolormesh(tr.wv[iord], tr.phase, tr.final[:,iord], cmap=cmap, rasterized=True, vmin=0.955-1, vmax=1.035-1)  
@@ -942,7 +945,7 @@ def plot_steps(tr, iord, xlim=None, masking_limit=None, id_spec=0, fig_name='',
     cax = divider.append_axes('right', size='3%', pad=0.05)
     cbar1 = fig.colorbar(im4,ax=ax4, cax=cax)
 #     ax4.set_title('G) PCA-Corrected Transmission Spectrum ({} PC)'.format(tr.params[5]))
-    ax4.text(tr.wv[iord][40], tr.phase[-6], 'G) PCA-Corrected Transmission Spectrum ({} PCs)'.format(tr.params[5]),
+    ax4.text(tr.wv[iord][40], tr.phase[-3], 'G) PCA-Corrected Transmission Spectrum ({} PCs)'.format(tr.params[5]),
              fontsize = 12, bbox ={'facecolor':'white', 'alpha':0.8})
 
 #     ax4.plot(tr.wv[iord][2044] * (1+tr.vrp/const.c), tr.phase)
@@ -1721,9 +1724,12 @@ def plot_logl_grid(logl_grid, n_pcas, cases, cond, pCloud, corrRV0, sig='with', 
 
 
 def plot_airmass(list_tr, markers=['o','s','d'], 
-                colors=['darkblue','dodgerblue','darkorange'], fig_name='', path_fig=None):
+                colors=['darkblue','dodgerblue','darkorange'], fig_name='', path_fig=None, plot_seeing=False):
 
-    ig, ax = plt.subplots(3,1, figsize=(9,8))
+    if plot_seeing:
+        ig, ax = plt.subplots(4,1, figsize=(9,10))
+    else:
+        ig, ax = plt.subplots(3,1, figsize=(9,8))
 
     # plt.figure(figsize=(8,3.5))
 
@@ -1773,6 +1779,23 @@ def plot_airmass(list_tr, markers=['o','s','d'],
     ax[2].axvspan(phase_t2, phase_t2, alpha=0.4, label='Total Transit')
 
     # ax[2].legend(loc='best', fontsize=12) #, bbox_to_anchor=(0.9, 0.71)
+
+    if plot_seeing:
+        for i,tr in enumerate(list_tr):
+            # start = np.array(tr.headers.get_all('HIERARCH ESO TEL AMBI FWHM START')[0])
+            # end = np.array(tr.headers.get_all('HIERARCH ESO TEL AMBI FWHM END')[0])
+            # mean_seeing = (start + end) / 2
+        
+            # ax[3].plot(tr.phase, mean_seeing, '-', marker=markers[i], color = colors[i])
+            # This one below is related to the AO system I think
+            ax[3].plot(tr.phase, tr.headers.get_all('HIERARCH ESO INS2 AOS ATM SEEING')[0], '-', marker=markers[i], color = colors[i])
+            
+        ax[3].set_ylabel('Mean seeing (\")', fontsize = 16)
+        ax[3].set_xlabel(r'Orbital phase ($\phi$)', fontsize=16)
+        ax[3].axvspan(phase_t1, phase_t4, alpha=0.2, label='Ingress/Egress')
+        ax[3].axvspan(phase_t2, phase_t3, alpha=0.2)
+        ax[3].axvspan(phase_t2, phase_t2, alpha=0.4, label='Total Transit')
+        # ax[3].set_ylim(0,2.0)
     
     plt.tight_layout()
 
@@ -1818,7 +1841,7 @@ def plot_night_summary_NIRPS(list_tr, obs, markers=['o','s','d'],
     yband = a.bands(tr.wv,'y')[2:-2]
     
     for i,tr in enumerate(list_tr):
-        ax[2].plot(tr.phase, np.nanmean(tr.SNR[:, hband],axis=-1),'-', marker=markers[i], color=colors[0], label = 'H-band')
+        ax[2].plot(tr.phase, np.nanmean(tr.SNR[:, hband],axis=-1),'-', marker=markers[i], color=colors[i], label = 'H-band')
         ax[2].plot(tr.phase, np.nanmean(tr.SNR[:, yband],axis=-1),'-', marker=markers[i], color='darkred', label = 'Y-band')
 
     ax[2].set_ylabel('Mean S/N\nper exposure', fontsize=16)
@@ -1832,7 +1855,7 @@ def plot_night_summary_NIRPS(list_tr, obs, markers=['o','s','d'],
     
     # plot H2O telluric pre-clean exponent
     for i,tr in enumerate(list_tr):
-        ax[3].plot(tr.phase, obs.headers_tellu.get_all('TLPEH2O')[0], '-', marker=markers[i], color=colors[0])
+        ax[3].plot(tr.phase, tr.headers.get_all('TLPEH2O')[0], '-', marker=markers[i], color=colors[i])
     
     ax[3].set_ylabel('Telluric exp. H2O', fontsize=16)
 #     ax[3].set_xlabel(r'Orbital phase ($\phi$)', fontsize=16)
@@ -1843,7 +1866,7 @@ def plot_night_summary_NIRPS(list_tr, obs, markers=['o','s','d'],
     
     # plot other tellurice pre-clean exponents
     for i,tr in enumerate(list_tr):
-        ax[4].plot(tr.phase, obs.headers_tellu.get_all('TLPEOTR')[0], '-', marker=markers[i], color=colors[i])
+        ax[4].plot(tr.phase, tr.headers.get_all('TLPEOTR')[0], '-', marker=markers[i], color=colors[i])
     
     ax[4].set_ylabel('Telluric exp. \nother species', fontsize=16)
     # ax[4].set_xlabel(r'Orbital phase ($\phi$)', fontsize=16)
@@ -1852,11 +1875,16 @@ def plot_night_summary_NIRPS(list_tr, obs, markers=['o','s','d'],
     ax[4].axvspan(phase_t2, phase_t3, alpha=0.2)
     ax[4].axvspan(phase_t2, phase_t2, alpha=0.4, label='Total Transit')
 
-    start = np.array(obs.headers.get_all('HIERARCH ESO TEL AMBI FWHM START')[0])
-    end = np.array(obs.headers.get_all('HIERARCH ESO TEL AMBI FWHM END')[0])
-    mean_seeing = (start + end) / 2
-
-    ax[5].plot(tr.phase, mean_seeing, '-', marker=markers[i], color = colors[i])
+    # seeing
+    for i,tr in enumerate(list_tr):
+        start = np.array(tr.headers.get_all('HIERARCH ESO TEL AMBI FWHM START')[0])
+        end = np.array(tr.headers.get_all('HIERARCH ESO TEL AMBI FWHM END')[0])
+        mean_seeing = (start + end) / 2
+    
+        ax[5].plot(tr.phase, mean_seeing, '-', marker=markers[i], color = colors[i])
+        # This one below is related to the AO system I think
+        # ax[5].plot(tr.phase, tr.headers.get_all('HIERARCH ESO INS2 AOS ATM SEEING')[0], '-', marker=markers[i], color = colors[i])
+        
     ax[5].set_ylabel('Mean seeing', fontsize = 16)
     ax[5].set_xlabel(r'Orbital phase ($\phi$)', fontsize=16)
     ax[5].axvspan(phase_t1, phase_t4, alpha=0.2, label='Ingress/Egress')

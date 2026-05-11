@@ -28,6 +28,10 @@ except ModuleNotFoundError:
         from petitRADTRANS.nat_cst import guillot_global, guillot_modif
     except ModuleNotFoundError:
         print('petitRADTRANS is not installed on this system')
+# if we're working with pRT3
+except ImportError:
+    from petitRADTRANS.physics import temperature_profile_function_guillot_global as guillot_global
+    from petitRADTRANS.physics import temperature_profile_function_guillot_modif as guillot_modif
 
 import logging
 
@@ -1610,7 +1614,7 @@ def gen_params_id_p(params_priors):
 #     return maxs, errors
 
 
-def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None, plot=True, plot_maxs=True, **kwargs):
+def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None, plot=True, plot_maxs=True, write_maxs=True, **kwargs):
     #     print(sample_all.shape)
     ndim = sample_all.shape[-1]
 
@@ -1654,14 +1658,20 @@ def plot_corner(sample_all, labels=None, param_no_zero=4, maxs=None, errors=None
                 float_str_moins = "{:.0f}".format(errors[i][0] - maxs[i])
                 float_str_plus = "{:.0f}".format(errors[i][1] - maxs[i])
 
-                axes[i, i].set_title(
+                if write_maxs:
+                    axes[i, i].set_title(
                     r' {} = {:.0f}$_{{{}}}^{{+{}}}$'.format(labels[i], maxs[i], float_str_moins, float_str_plus))
+                else:
+                    axes[i, i].set_title("")
             else:
                 float_str_moins = "{:.2f}".format(errors[i][0] - maxs[i])
                 float_str_plus = "{:.2f}".format(errors[i][1] - maxs[i])
 
-                axes[i, i].set_title(
+                if write_maxs:
+                    axes[i, i].set_title(
                     r' {} = {:.2f}$_{{{}}}^{{+{}}}$'.format(labels[i], maxs[i], float_str_moins, float_str_plus))
+                else:
+                    axes[i, i].set_title("")
     else:
         fig = plt.figure()
 
