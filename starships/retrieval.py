@@ -1626,10 +1626,17 @@ warnings.simplefilter("ignore", RuntimeWarning)
 import gc
 
 # from petitRADTRANS import nat_cst as nc
+# track which petitradtrans version is being used
+prt_version='2'
 try:
     from petitRADTRANS.physics import guillot_global, guillot_modif
 except ModuleNotFoundError:
     from petitRADTRANS.nat_cst import guillot_global, guillot_modif
+# if we're working with pRT3
+except ImportError:
+    prt_version='3'
+    from petitRADTRANS.physics import temperature_profile_function_guillot_global as guillot_global
+    from petitRADTRANS.physics import temperature_profile_function_guillot_modif as guillot_modif
     
 # other newly implemented TP profiles
 from starships.extra_TP_profiles import madhu_seager
@@ -1707,6 +1714,9 @@ global remove_mol_low
 global mask_exposures
 # new global variable to give which molecules should have step_profiles
 global step_profiles
+# new global variable to allow the use of move types other than StretchMove in emcee
+global emcee_move_type
+global rot_broad
 
 
 def convert_to_quantity(quantity_dict):
@@ -1838,7 +1848,8 @@ def unpack_input_parameters(input_parameters, **kwargs):
                           'pl_params', 'linelist_names', 'fixed_params',
                           'reg_fixed_params', 'reg_params', 'special_init',
                           'remove_mol_high', 'remove_mol_low', 'mask_exposures',
-                          'LR_opacity_mode', 'LR_opacity_sampling', 'step_profiles']
+                          'LR_opacity_mode', 'LR_opacity_sampling', 'step_profiles',
+                          'emcee_move_type', 'rot_broad']
     for key in empty_dict_if_none:
         try:
             if input_params[key] is None:
@@ -2817,19 +2828,25 @@ def prepare_model_high_or_low(theta_dict, mode, atmo_obj=None, fct_star=None,
                     fct_star=fct_star)
     wv_all, model_all = list(), list()
     for atmo_obj in atmo_obj_list:
-        if theta_dict['cloud_fraction'] == None or theta_dict['cloud_fraction'] == 1:
+        if prt_version=='3':
+            kwargs['cloud_fraction'] = theta_dict['cloud_fraction']
+            if theta_dict['cloud_fraction'] == None:
+                kwargs['cloud_fraction'] = 1.0
             wv_out, model_out = prt.retrieval_model_plain(atmo_obj, species, planet, *args, **kwargs)
         else:
-            cloud_f = theta_dict['cloud_fraction']
-            clear_f = 1 - cloud_f
-            wv_out, model_out_cloudy = prt.retrieval_model_plain(atmo_obj, species, planet, *args, **kwargs)
-            theta_dict['p_cloud_clear'] = None
-            args_clear = [theta_dict[key] for key in ['pressures', 'temperatures', 'gravity', 'P0', 'p_cloud_clear', 'R_pl', 'R_star']]
-            kwargs_clear = dict(kwargs)
-            kwargs_clear['gamma_scat'] = None
-            kwargs_clear['kappa_factor'] = None
-            wv_out, model_out_clear = prt.retrieval_model_plain(atmo_obj, species, planet, *args_clear, **kwargs_clear)
-            model_out = (cloud_f * model_out_cloudy) + (clear_f * model_out_clear)
+            if theta_dict['cloud_fraction'] == None or theta_dict['cloud_fraction'] == 1:
+                wv_out, model_out = prt.retrieval_model_plain(atmo_obj, species, planet, *args, **kwargs)
+            else:
+                cloud_f = theta_dict['cloud_fraction']
+                clear_f = 1 - cloud_f
+                wv_out, model_out_cloudy = prt.retrieval_model_plain(atmo_obj, species, planet, *args, **kwargs)
+                theta_dict['p_cloud_clear'] = None
+                args_clear = [theta_dict[key] for key in ['pressures', 'temperatures', 'gravity', 'P0', 'p_cloud_clear', 'R_pl', 'R_star']]
+                kwargs_clear = dict(kwargs)
+                kwargs_clear['gamma_scat'] = None
+                kwargs_clear['kappa_factor'] = None
+                wv_out, model_out_clear = prt.retrieval_model_plain(atmo_obj, species, planet, *args_clear, **kwargs_clear)
+                model_out = (cloud_f * model_out_cloudy) + (clear_f * model_out_clear)
 
         if mode == 'high':
             # --- Downgrading and broadening the model (if broadening is included)
@@ -2842,6 +2859,14 @@ def prepare_model_high_or_low(theta_dict, mode, atmo_obj=None, fct_star=None,
                                                 [theta_dict['wind']]],
                                     'gauss': True, 'x0': 0,
                                     'fwhm': theta_dict['wind'] * 1e3, }
+                # simple rotational broadening, assuming synchronous/tidally locked rotation
+                elif rot_broad:
+                    rot_kwargs = {'rot_params': [planet.R_pl,
+                                                 planet.M_pl,
+                                                 planet.Tp,
+                                                 [1/planet.period.to(u.d).value]],
+                                  'x0': 0
+                                  }
                 else:
                     rot_kwargs = {'rot_params': None}
                 
@@ -3282,9 +3307,21 @@ def main(yaml_file=None, **kwargs):
     # Run it!
     with Pool(n_cpu) as pool:
         log.info('Initialize sampler...')
-        sampler = emcee.EnsembleSampler(n_walkers, ndim, lnprob,
-                                        pool=pool,
-                                        backend=backend, a=2)  ### step size -- > à changer
+        if emcee_move_type=='DE':
+            log.info('Using DEMove.')
+            sampler = emcee.EnsembleSampler(n_walkers, ndim, lnprob,
+                                            pool=pool, moves=emcee.moves.DEMove(),
+                                            backend=backend)
+        elif emcee_move_type=='DESnooker':
+            log.info('Using DESnookerMove.')
+            sampler = emcee.EnsembleSampler(n_walkers, ndim, lnprob,
+                                            pool=pool, moves=emcee.moves.DESnookerMove(),
+                                            backend=backend)
+        else:
+            log.info('Using the default StretchMove.')
+            sampler = emcee.EnsembleSampler(n_walkers, ndim, lnprob,
+                                            pool=pool,
+                                            backend=backend, a=2)  ### step size -- > à changer
         log.info('Starting the retrieval!')
         sampler.run_mcmc(pos, n_steps, progress=False)  # , skip_initial_state_check=True)
 
